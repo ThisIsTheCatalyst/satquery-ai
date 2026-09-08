@@ -1,0 +1,10 @@
+# Everything the demo needs. Nothing it doesn't.
+torch>=2.0.0
+torchvision>=0.15.0          # frozen ResNet-18 encoders + EuroSAT download
+transformers>=4.35.0         # CLIP (VQA, captioning, grounding)
+Pillow>=9.0.0
+numpy>=1.24.0
+pyyaml>=6.0
+streamlit>=1.32.0            # demo UI
+pyngrok>=7.0.0               # public URL from Colab
+pytest>=7.0.0                # test suite

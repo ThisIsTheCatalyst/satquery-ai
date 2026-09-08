@@ -1,0 +1,50 @@
+# Google Colab ~16GB VRAM (A100 / V100 16GB) configuration
+# Allows larger batch sizes and higher image resolution.
+
+_extends: "configs/config.yaml"
+
+training:
+  batch_size: 8
+  epochs: 10
+  lr: 0.00003
+  optimizer: "adamw"
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  device: "cuda"
+  seed: 42
+  log_every: 25
+  eval_every: 1
+  gradient_accumulation_steps: 2
+  fp16: true
+  max_grad_norm: 1.0
+  max_train_samples: 20000
+  max_val_samples: 2000
+
+models:
+  vqa:
+    image_size: 336
+    checkpoint: "models/checkpoints/geochat/lora_adapter"
+    lora_rank: 8
+    lora_alpha: 32
+    freeze_vision_encoder: false     # allow light encoder fine-tuning
+  fusion:
+    image_size: 224
+    checkpoint: "models/checkpoints/fusion/fusion_head"
+    freeze_encoders: false
+  change:
+    image_size: 512
+
+datasets:
+  bigearthnet:
+    max_samples: 50000
+  bigearthnet_mm:
+    max_samples: 20000
+
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  checkpoints: "models/checkpoints"
+  reports_out: "outputs/reports"
+  eval_results: "outputs/eval_results"
+
+profile: "colab_16gb"

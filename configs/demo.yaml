@@ -1,0 +1,69 @@
+# SatQuery AI — single demo configuration.
+paths:
+  data_demo: "data/demo"
+  checkpoints: "models/checkpoints"
+  outputs: "outputs"
+
+clip:
+  model_id: "openai/clip-vit-base-patch32"
+  image_size: 224
+  prompt_template: "a satellite photo of {}"
+
+datasets:
+  eurosat:
+    root: "data/demo/eurosat"
+    n_per_class: 20
+    classes: [AnnualCrop, Forest, HerbaceousVegetation, Highway, Industrial,
+              Pasture, PermanentCrop, Residential, River, SeaLake]
+  oscd:
+    root: "data/demo/oscd"
+    n_pairs: 6
+  fusion:
+    root: "data/demo/fusion"
+    max_samples: 500
+
+models:
+  vqa:
+    name: "vqa_v1"
+    backbone: "CLIP-ViT-B/32"
+    checkpoint: "openai/clip-vit-base-patch32"
+  captioning:
+    name: "caption_v1"
+    backbone: "CLIP-ViT-B/32"
+    checkpoint: "openai/clip-vit-base-patch32"
+  grounding:
+    name: "grounding_v1"
+    backbone: "CLIP-ViT-B/32"
+    checkpoint: "openai/clip-vit-base-patch32"
+    grid: 4
+    expand_ratio: 0.80
+  change:
+    name: "change_v1"
+    backbone: "siamese_difference"
+    checkpoint: "none (unsupervised classical baseline)"
+  fusion:
+    name: "fusion_v1"
+    backbone: "ResNet18x2+MLP"
+    checkpoint: "models/checkpoints/fusion/fusion_head.pt"
+    image_size: 64
+    freeze_encoders: true
+
+training:
+  batch_size: 32
+  epochs: 15
+  lr: 0.001
+  weight_decay: 0.0001
+  device: "cuda"
+  seed: 42
+  amp: true
+  max_train_samples: 500
+  max_val_samples: 100
+
+agent:
+  confidence_threshold: 0.35
+  task_labels: ["vqa", "captioning", "grounding", "change", "fusion"]
+
+app:
+  title: "SatQuery AI"
+  max_upload_mb: 50
+  allowed_formats: [".tif", ".tiff", ".png", ".jpg", ".jpeg"]

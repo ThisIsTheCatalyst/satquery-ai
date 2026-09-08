@@ -1,0 +1,55 @@
+# Google Colab ~8GB VRAM / ~12GB RAM configuration
+# Designed to demonstrate all pipeline components without OOM errors.
+# Batch sizes are minimal; image resolution is reduced; encoders are frozen.
+
+_extends: "configs/config.yaml"
+
+training:
+  batch_size: 2
+  epochs: 5
+  lr: 0.00005
+  optimizer: "adamw"
+  weight_decay: 0.01
+  warmup_ratio: 0.10
+  device: "cuda"
+  seed: 42
+  log_every: 10
+  eval_every: 1
+  gradient_accumulation_steps: 4    # effective batch = 8
+  fp16: true                         # mixed precision — critical for 8GB
+  max_grad_norm: 1.0
+  # Dataset subset for training (keep small for demo)
+  max_train_samples: 2000
+  max_val_samples: 200
+
+models:
+  vqa:
+    image_size: 224                  # reduced from 336 for memory
+    checkpoint: "models/checkpoints/geochat/lora_adapter"
+    lora_rank: 4                     # smaller LoRA for 8GB
+    lora_alpha: 16
+    freeze_vision_encoder: true
+  fusion:
+    image_size: 128                  # reduced from 256
+    checkpoint: "models/checkpoints/fusion/fusion_head"
+    freeze_encoders: true            # only train fusion head
+  change:
+    image_size: 256                  # VisTA requires at least 256
+
+datasets:
+  bigearthnet:
+    labels_file: "data/raw/bigearthnet/BigEarthNet.txt"
+    image_dir: "data/raw/bigearthnet/images"
+    max_samples: 5000               # small subset for 8GB
+  bigearthnet_mm:
+    root: "data/raw/bigearthnet_mm"
+    max_samples: 2000
+
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  checkpoints: "models/checkpoints"
+  reports_out: "outputs/reports"
+  eval_results: "outputs/eval_results"
+
+profile: "colab_8gb"

@@ -1,0 +1,43 @@
+# Local GPU (24GB+ VRAM) configuration for full training runs.
+
+_extends: "configs/config.yaml"
+
+training:
+  batch_size: 16
+  epochs: 30
+  lr: 0.00002
+  optimizer: "adamw"
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  device: "cuda"
+  seed: 42
+  log_every: 50
+  eval_every: 1
+  gradient_accumulation_steps: 1
+  fp16: true
+  bf16: false                        # use fp16; switch to bf16 for A100/H100
+  max_grad_norm: 1.0
+  max_train_samples: null            # use full dataset
+
+models:
+  vqa:
+    image_size: 336
+    checkpoint: "models/checkpoints/geochat/lora_adapter"
+    lora_rank: 16
+    lora_alpha: 64
+    freeze_vision_encoder: false
+  fusion:
+    image_size: 256
+    checkpoint: "models/checkpoints/fusion/fusion_head"
+    freeze_encoders: false
+  change:
+    image_size: 512
+
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  checkpoints: "models/checkpoints"
+  reports_out: "outputs/reports"
+  eval_results: "outputs/eval_results"
+
+profile: "local_gpu"

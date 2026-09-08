@@ -1,0 +1,34 @@
+# SatQuery AI — Full requirements
+# For Colab, use requirements-colab.txt instead
+
+# Core ML
+torch>=2.1.0
+torchvision>=0.16.0
+transformers>=4.40.0
+accelerate>=0.30.0
+peft>=0.10.0
+
+# Geospatial imagery
+rasterio>=1.3.9
+Pillow>=10.0.0
+numpy>=1.26.0
+opencv-python>=4.9.0
+
+# Data / training utils
+pyyaml>=6.0
+pandas>=2.2.0
+scikit-learn>=1.4.0
+tqdm>=4.66.0
+
+# Metrics (implemented from scratch to avoid network deps for punkt etc)
+# nltk and rouge-score are optional — our metrics.py doesn't require them
+# nltk>=3.8.1
+# rouge-score>=0.1.2
+
+# App / API
+fastapi>=0.111.0
+uvicorn>=0.29.0
+streamlit>=1.35.0
+
+# Testing
+pytest>=8.0.0

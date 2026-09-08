@@ -1,0 +1,177 @@
+# Central configuration — single source of truth.
+# Every module reads paths/params from here. Do not hardcode elsewhere.
+#
+# TEAM RULE: nobody edits the *shape* of this file unilaterally (top-level
+# keys, per-model/per-dataset sub-schema). Adding values inside your own
+# section (e.g. tuning models.vqa.lora_rank) is fine and doesn't need a
+# team sync; changing the schema does.
+
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  checkpoints: "models/checkpoints"
+  reports_out: "app/static/reports"
+  eval_results: "src/evaluation/results"   # per-person JSON eval dumps, see docs/DATASETS.md
+
+# ---------------------------------------------------------------------------
+# Datasets — what each one is FOR, and whether it's usable for training.
+# The `usable_for_training` flag here is DOCUMENTATION; the enforced
+# guardrail lives in src/common/constants.py::DATASET_ROLES (checked by
+# src/preprocessing/dataset_loader.py at train-split request time). Keep
+# these two in sync if you ever change one.
+#
+# `sensor` / `optical_sensor` / `sar_sensor` tag which real-world sensor the
+# data comes from — this feeds src/preprocessing/sensor_registry.py so the
+# right normalization/band-handling adapter is picked. Development data is
+# Sentinel-based; the hidden ISRO/SAC judging set is Cartosat-2S + RISAT, a
+# DIFFERENT sensor pair. Never assume Sentinel band indices/scaling apply to it.
+# ---------------------------------------------------------------------------
+datasets:
+  bigearthnet:
+    # Remote-sensing domain adaptation (image <-> text) — Person 1 / GeoChat.
+    usable_for_training: true
+    sensor: "Sentinel-2"
+    labels_file: "data/raw/bigearthnet/BigEarthNet.txt"
+    image_dir: "data/raw/bigearthnet/images"
+    optical_bands: [2, 3, 4, 8]      # Sentinel-2: B2,B3,B4,B8 (example — confirm against actual band files)
+    sar_bands: null                  # BigEarthNet (non-MM) is optical-only
+    normalization: "percentile_2_98" # robust to outliers, common for Sentinel-2 reflectance
+
+  bigearthnet_mm:
+    # Paired Sentinel-2 (optical) + Sentinel-1 (SAR) — Person 4 / fusion.
+    usable_for_training: true
+    optical_sensor: "Sentinel-2"
+    sar_sensor: "Sentinel-1"
+    root: "data/raw/bigearthnet_mm"
+    optical_bands: [2, 3, 4, 8]
+    sar_bands: [1, 2]                 # Sentinel-1: VV, VH
+    optical_normalization: "percentile_2_98"
+    sar_normalization: "db_scale_minmax"   # convert to dB then min-max scale
+    label_taxonomy: "bigearthnet_corine"   # multi-label land-cover classes the fusion head predicts
+
+  vrsbench:
+    # Single-image captioning/VQA/grounding EVALUATION ONLY — Person 1 & 2.
+    usable_for_training: false
+    sensor: "unknown"                 # benchmark PNG/JPEG, no georeferencing/sensor metadata
+    root: "data/raw/vrsbench"
+    normalization: "imagenet"         # match whatever GeoChat's processor expects
+    grounding_iou_threshold: 0.30     # freeze BEFORE seeing results: below this -> escalate to SAM fallback
+
+  rsvqa:
+    # VQA EVALUATION ONLY — Person 1.
+    usable_for_training: false
+    sensor: "unknown"
+    root: "data/raw/rsvqa"
+    normalization: "imagenet"
+
+  cdvqa:
+    # Bi-temporal change VQA EVALUATION ONLY (stretch-goal fine-tune only,
+    # deliberately) — Person 3 / VisTA.
+    usable_for_training: false
+    sensor: "unknown"
+    root: "data/raw/cdvqa"
+    normalization: "imagenet"
+
+  isro_sac:
+    # Final judging set: co-registered Cartosat-2S optical + RISAT SAR pairs.
+    # NEVER seen during development, by design. DO NOT assume Sentinel band
+    # indices/normalization apply here.
+    usable_for_training: false
+    optical_sensor: "Cartosat-2S"
+    sar_sensor: "RISAT"
+    root: "data/raw/isro_sac"
+    optical_bands: [1, 2, 3, 4]        # TODO: confirm actual Cartosat-2S band layout
+    sar_bands: [1]                     # TODO: confirm actual RISAT band layout
+    optical_normalization: "percentile_2_98"
+    sar_normalization: "db_scale_minmax"
+
+# ---------------------------------------------------------------------------
+# Models — one block per specialist. `image_size`/preprocessing here is
+# MODEL-specific (what the backbone's processor expects), applied AFTER the
+# dataset-specific band selection/normalization above. Two different models
+# looking at the same raw image can therefore get different final tensors.
+# ---------------------------------------------------------------------------
+models:
+  vqa:
+    name: "vqa_v1"
+    backbone: "GeoChat"
+    owner: "person_1"
+    image_size: 336                 # TODO(Person 1): confirm GeoChat's expected input size
+    checkpoint: "models/checkpoints/geochat/lora_adapter"
+    adaptation_dataset: "bigearthnet"
+    eval_datasets: ["rsvqa", "vrsbench"]
+    train: true                     # LoRA fine-tuning — mandatory RS adaptation
+
+  captioning:
+    name: "caption_v1"
+    backbone: "GeoChat"             # shares Person 1's checkpoint, different prompt
+    owner: "person_1"
+    enabled: true                   # team's chosen 2nd single-image task
+    checkpoint: "models/checkpoints/geochat/lora_adapter"
+    eval_datasets: ["vrsbench"]
+    train: false                    # reuse VQA adapter unless quality demands otherwise
+
+  grounding:
+    name: "grounding_v1"
+    backbone: "GeoChat"             # primary path; see fallback below
+    fallback_backbones: ["GeoGround", "SAM"]
+    fallback_trigger: "vrsbench.grounding_iou_threshold"  # see datasets.vrsbench above
+    owner: "person_2"
+    enabled: true
+    image_size: 336
+    checkpoint: "models/checkpoints/grounding/model"   # only populated if fallback is used
+    eval_datasets: ["vrsbench"]
+    train: false                    # only train fallback model if GeoChat grounding is insufficient
+
+  change:
+    name: "change_v1"
+    backbone: "VisTA"
+    owner: "person_3"
+    image_size: 512                 # TODO(Person 3): confirm VisTA's expected input size
+    checkpoint: "models/checkpoints/vista/pretrained"  # pretrained weights, not fine-tuned initially
+    eval_datasets: ["cdvqa"]
+    train: false                    # pretrained-first; fine-tuning is a stretch goal
+    fallback: "siamese_difference"  # if VisTA is unobtainable — confirm VisTA availability on day 1
+
+  fusion:
+    name: "fusion_v1"
+    backbone: "OpticalSAR-FeatureFusion"
+    owner: "person_4"
+    image_size: 256
+    checkpoint: "models/checkpoints/fusion/fusion_head"
+    optical_encoder: "TODO: e.g. Sentinel-2-pretrained ResNet/ViT"
+    sar_encoder: "TODO: e.g. Sentinel-1-pretrained encoder, or generic ResNet on dB-scaled SAR"
+    adaptation_dataset: "bigearthnet_mm"
+    eval_datasets: ["bigearthnet_mm"]
+    train: true                     # only the fusion head is trained; encoders frozen/lightly tuned
+    output_type: "multilabel_classification"   # NOT open-ended text generation — see fusion_model.py
+    label_taxonomy: "bigearthnet_corine"
+    text_output: "templated"        # `text` field is a template filled from classification, not generated
+    segmentation_head: "stretch"    # P1.5 — spatial masks, only after classification works end-to-end
+    ablation_required: true         # mandatory: optical-only vs SAR-only vs optical+SAR, reported honestly
+
+training:
+  batch_size: 8
+  epochs: 20
+  lr: 0.00002
+  optimizer: "adamw"
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  device: "cuda"   # falls back to cpu if unavailable
+  seed: 42
+  log_every: 50
+  eval_every: 1
+
+agent:
+  confidence_threshold: 0.4      # below this, flag "low confidence" in UI
+  max_tools_per_query: 2         # e.g. fusion + vqa combined
+  task_labels: ["vqa", "captioning", "grounding", "change", "fusion"]
+
+evaluation:
+  normalize_scores: true
+  benchmarks: ["vrsbench", "rsvqa", "cdvqa", "isro_sac"]
+
+app:
+  title: "SatQuery AI"
+  max_upload_mb: 200
+  allowed_formats: [".tif", ".tiff", ".png", ".jpg", ".jpeg"]
